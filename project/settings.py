@@ -5,6 +5,7 @@ Django settings for project.
 from pathlib import Path
 from django.core.management.utils import get_random_secret_key
 import os
+import dj_database_url
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,8 +22,8 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY") or get_random_secret_key()
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
 # In production, this should be a list of your allowed hosts.
-ALLOWED_HOSTS = ["*"]
-
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(',')
+ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS if host.strip()]
 # -------------------------------------------------------------
 # APPLICATIONS
 # -------------------------------------------------------------
@@ -47,7 +48,8 @@ INSTALLED_APPS = [
     'allauth',                   # Core allauth app
     'allauth.account',           # Handles user accounts (registration, login, logout, email verification)
     'allauth.socialaccount',     # For social logins (Google, Facebook, etc.)
-    'allauth.socialaccount.providers.google',  # Specific provider for Google
+    'allauth.socialaccount.providers.google',  # Specific provider for Googlث
+    'whitenoise.runserver_nostatic',  # To serve static files in production
 ]
 
 # -------------------------------------------------------------
@@ -55,15 +57,17 @@ INSTALLED_APPS = [
 # -------------------------------------------------------------
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # For serving static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    # 'django.middleware.csrf.CsrfViewMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     "allauth.account.middleware.AccountMiddleware",  # Required by allauth
 ]
-
+CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "").split(',')
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in CSRF_TRUSTED_ORIGINS if origin.strip()]
 # -------------------------------------------------------------
 # URL & WSGI CONFIGURATION
 # -------------------------------------------------------------
@@ -93,12 +97,11 @@ TEMPLATES = [
 # DATABASE
 # -------------------------------------------------------------
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=os.getenv("DATABASE_URL", "sqlite:///db.sqlite3"),
+        conn_max_age=600
+    )
 }
-
 # -------------------------------------------------------------
 # PASSWORD VALIDATION
 # -------------------------------------------------------------
@@ -123,9 +126,11 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / "media"
+# إذا كنت تستخدم AWS S3 أو ما شابه، ستكون الإعدادات هنا
 
 # -------------------------------------------------------------
 # DJANGO REST FRAMEWORK CONFIGURATION
