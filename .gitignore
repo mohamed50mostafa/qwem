@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+
+# Django
+*.log
+*.pot
+*.mo
+*.xml
+db.sqlite3
+/media
+/static
+.env
+
+# OS
+.DS_Store
+.vscode
+
+# Hugging Face
+*.safetensors
+*.bin
+/cache
+*.tfevents.*
