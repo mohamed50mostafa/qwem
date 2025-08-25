@@ -143,7 +143,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         # WARNING: This allows anyone to access your API.
         # Change to 'rest_framework.permissions.IsAuthenticated' for production.
-        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+        'rest_framework.permissions.IsAuthenticated',
     ),
     'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
 }
