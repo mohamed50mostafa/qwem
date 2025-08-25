@@ -1,5 +1,3 @@
-# app/views.py
-
 from rest_framework import viewsets
 from rest_framework.response import Response
 from django.contrib.auth.models import User
@@ -7,26 +5,24 @@ from django.db.models import Q
 import os
 
 # --------------------------------------------------------------------------------
-# NEW IMPORTS FOR THE HUGGING FACE TRANSFORMERS LIBRARY
+# NEW IMPORTS FOR THE GEMINI AI API
 # --------------------------------------------------------------------------------
-from transformers import pipeline
+import google.generativeai as genai
 from .models import Profile, Chat, Message, Te_status
 from .serializers import ProfileSerializer, ChatSerializer, MessageSerializer, TeStatusSerializer
 
 
 # --------------------------------------------------------------------------------
-# LOAD THE TRANSFORMERS PIPELINE (Loaded once on server startup)
+# CONFIGURE GEMINI AI (from environment variable for security)
 # --------------------------------------------------------------------------------
-try:
-    print("🔄 Attempting to load text-generation pipeline...")
-    generation_pipe = pipeline(
-        "text-generation",
-        model="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B" 
-    )
-    print("✅ Pipeline loaded successfully!")
-except Exception as e:
-    print(f"❌ Failed to load pipeline: {e}")
-    generation_pipe = None
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+    print("✅ Gemini AI configured successfully!")
+else:
+    print("❌ GEMINI_API_KEY not found. Please set the environment variable.")
+    gemini_model = None
 
 
 # --------------------------------------------------------------------------------
@@ -45,7 +41,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         # 1) Save user's message
         user_msg = serializer.save(user=user_instance, chat=chat_instance, content=content, ai=False)
 
-        # 2) Generate AI reply using the new pipeline
+        # 2) Generate AI reply using the Gemini API
         persona = self.get_or_create_persona(user_instance, content)
         full_prompt = self.create_ai_prompt(persona, content)
         ai_text = self.get_ai_response(full_prompt)
@@ -60,26 +56,14 @@ class MessageViewSet(viewsets.ModelViewSet):
         }, status=201)
 
     def get_ai_response(self, full_prompt):
-        """Generates AI response using the loaded Transformers pipeline."""
-        if not generation_pipe:
-            return "Pipeline is not loaded. Check server logs."
+        """Generates AI response using the configured Gemini model."""
+        if not gemini_model:
+            return "Gemini AI is not configured. Check server logs."
         
         try:
-            output = generation_pipe(
-                full_prompt,
-                max_new_tokens=256,
-                truncation=True,
-                temperature=0.7,
-                do_sample=True,
-            )
-            
-            generated_text = output[0]['generated_text'].strip()
-            ai_start_marker = "<|im_start|>assistant"
-            if ai_start_marker in generated_text:
-                return generated_text.split(ai_start_marker, 1)[1].strip()
-            
-            return generated_text
-            
+            response = gemini_model.generate_content(full_prompt)
+            # The generated content is in the 'text' attribute of the response
+            return response.text.strip()
         except Exception as e:
             print(f"Error generating AI response: {e}")
             return f"خطأ في توليد الرد من الذكاء الاصطناعي: {e}"
@@ -96,17 +80,14 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def create_ai_prompt(self, persona, user_message):
         """
-        Creates the full system-level prompt using DeepSeek's chat template.
+        Creates the full prompt for Gemini.
         """
-        return f"""<|im_start|>system
+        return f"""
 انت مساعد افتراضي مصري. 🇪🇬 مهمتك هي مساعدة المستخدمين من خلال الرد عليهم بأسلوب ودود ومساعد.
 استخدم اللغة المصرية العامية فقط.
 تأكد أن ردك يكون بناءً على شخصية المستخدم: {persona}
 اجعل ردك طبيعياً ومختصراً قدر الإمكان.
-<|im_end|>
-<|im_start|>user
-{user_message}<|im_end|>
-<|im_start|>assistant
+{user_message}
 """
 
 class ProfileViewSet(viewsets.ModelViewSet):
