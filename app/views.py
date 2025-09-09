@@ -1,15 +1,39 @@
 from rest_framework import viewsets
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.contrib.auth.models import User
 from django.db.models import Q
 import os
-
+from rest_framework.authtoken.models import Token
 # --------------------------------------------------------------------------------
 # NEW IMPORTS FOR THE GEMINI AI API
 # --------------------------------------------------------------------------------
 import google.generativeai as genai
 from .models import Profile, Chat, Message, Te_status
-from .serializers import ProfileSerializer, ChatSerializer, MessageSerializer, TeStatusSerializer
+from .serializers import ProfileSerializer, ChatSerializer, MessageSerializer, TeStatusSerializer, UserSerializer
+
+@api_view(['post'])
+def register(request):
+    if request.method == 'POST':
+        username = request.data.get('username')
+        password = request.data.get('password')
+        email = request.data.get('email')
+        first_name = request.data.get('first_name', '')
+        last_name = request.data.get('last_name', '')
+        if User.objects.filter(email=email).exists():
+            return Response({"error": "Email already exists"}, status=400)
+        if User.objects.filter(password=password).exists():
+            return Response({"error": "Password already exists"}, status=400)
+        user = User.objects.create_user(username=username, password=password, email=email, first_name=first_name, last_name=last_name)
+        user.save()
+        token, created = Token.objects.get_or_create(user=user)
+        serializer = UserSerializer(user)
+        data = serializer.data
+        data['token'] = token.key
+        return Response({"message": "User registered successfully", "user": data, "token": token.key}, status=201)
+    return Response({"error": "Invalid request method"}, status=405)
+
+
 
 
 # --------------------------------------------------------------------------------
