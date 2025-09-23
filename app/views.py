@@ -1,39 +1,82 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.contrib.auth.models import User
-from django.db.models import Q
 import os
 from rest_framework.authtoken.models import Token
+from rest_framework.decorators import action
 # --------------------------------------------------------------------------------
 # NEW IMPORTS FOR THE GEMINI AI API
 # --------------------------------------------------------------------------------
 import google.generativeai as genai
 from .models import Profile, Chat, Message, Te_status
-from .serializers import ProfileSerializer, ChatSerializer, MessageSerializer, TeStatusSerializer, UserSerializer
+from .serializers import (
+    ProfileSerializer,
+    ChatSerializer,
+    MessageSerializer,
+    TeStatusSerializer,
+    UserSerializer,
+)
 
-@api_view(['post'])
+# --------------------------------------------------------------------------------
+# IMPROVED REGISTER VIEW
+# --------------------------------------------------------------------------------
+@api_view(["POST"])
 def register(request):
-    if request.method == 'POST':
-        username = request.data.get('username')
-        password = request.data.get('password')
-        email = request.data.get('email')
-        first_name = request.data.get('first_name', '')
-        last_name = request.data.get('last_name', '')
+    """
+    Handles user registration and creates an authentication token.
+    Checks for existing users by email.
+    """
+    if request.method == "POST":
+        username = request.data.get("username")
+        password = request.data.get("password")
+        email = request.data.get("email")
+        first_name = request.data.get("first_name", "")
+        last_name = request.data.get("last_name", "")
+
+        # 1. Validate required fields
+        if not all([username, password, email]):
+            return Response(
+                {"error": "Username, password, and email are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 2. Check for existing email to prevent duplicates
         if User.objects.filter(email=email).exists():
-            return Response({"error": "Email already exists"}, status=400)
-        if User.objects.filter(password=password).exists():
-            return Response({"error": "Password already exists"}, status=400)
-        user = User.objects.create_user(username=username, password=password, email=email, first_name=first_name, last_name=last_name)
-        user.save()
-        token, created = Token.objects.get_or_create(user=user)
-        serializer = UserSerializer(user)
-        data = serializer.data
-        data['token'] = token.key
-        return Response({"message": "User registered successfully", "user": data, "token": token.key}, status=201)
-    return Response({"error": "Invalid request method"}, status=405)
+            return Response(
+                {"error": "Email already exists."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        # 3. Create the user with a hashed password
+        try:
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+            )
+            # Create or retrieve authentication token
+            token, created = Token.objects.get_or_create(user=user)
+            serializer = UserSerializer(user)
 
+            return Response(
+                {
+                    "message": "User registered successfully",
+                    "user": serializer.data,
+                    "token": token.key,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    return Response(
+        {"error": "Invalid request method"}, status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
 
 
 # --------------------------------------------------------------------------------
@@ -50,19 +93,41 @@ else:
 
 
 # --------------------------------------------------------------------------------
-# VIEWS WITH THE NEW GENERATION LOGIC
+# REFACTORED VIEWS WITH BETTER LOGIC AND SECURITY
 # --------------------------------------------------------------------------------
-
 class MessageViewSet(viewsets.ModelViewSet):
+    """
+    A viewset for managing chat messages and handling AI responses.
+    """
     queryset = Message.objects.all().order_by("timestamp")
     serializer_class = MessageSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
-    def perform_create(self, serializer):
-        user_instance = serializer.validated_data['user']
+    def get_queryset(self):
+        """
+        Filters messages to only show those for the current user's chats.
+        """
+        user = self.request.user
+        return Message.objects.filter(
+            chat__user=user
+        ).order_by("timestamp")
+
+    def create(self, request, *args, **kwargs):
+        """
+        Handles creating a user's message and generating an AI reply.
+        """
+        # Create a mutable copy of the request data
+        request_data = request.data.copy()
+        request_data['user'] = request.user.id
+
+        serializer = self.get_serializer(data=request_data)
+        serializer.is_valid(raise_exception=True)
+
+        user_instance = self.request.user
         chat_instance = serializer.validated_data['chat']
         content = serializer.validated_data['content']
 
-        # 1) Save user's message
+        # 1) Save the user's message
         user_msg = serializer.save(user=user_instance, chat=chat_instance, content=content, ai=False)
 
         # 2) Generate AI reply using the Gemini API
@@ -70,14 +135,14 @@ class MessageViewSet(viewsets.ModelViewSet):
         full_prompt = self.create_ai_prompt(persona, content)
         ai_text = self.get_ai_response(full_prompt)
 
-        # 3) Save AI's response
+        # 3) Save the AI's response to the database
         ai_msg = Message.objects.create(chat=chat_instance, user=None, ai=True, content=ai_text)
-
-        # 4) Return both messages
+        
+        # 4) Return both messages in a structured response
         return Response({
-            "user_message": MessageSerializer(user_msg).data,
-            "ai_message": MessageSerializer(ai_msg).data,
-        }, status=201)
+            "user_message": MessageSerializer(user_msg, context={'request': request}).data,
+            "ai_message": MessageSerializer(ai_msg, context={'request': request}).data,
+        }, status=status.HTTP_201_CREATED)
 
     def get_ai_response(self, full_prompt):
         """Generates AI response using the configured Gemini model."""
@@ -107,63 +172,65 @@ class MessageViewSet(viewsets.ModelViewSet):
         Creates the full prompt for Gemini.
         """
         return f"""
-انت مساعد افتراضي مصري. 🇪🇬 مهمتك هي مساعدة المستخدمين من خلال الرد عليهم بأسلوب ودود ومساعد.
-استخدم اللغة المصرية العامية فقط.
-تأكد أن ردك يكون بناءً على شخصية المستخدم: {persona}
-اجعل ردك طبيعياً ومختصراً قدر الإمكان.
-{user_message}
-"""
+        انت مساعد افتراضي مصري. 🇪🇬 مهمتك هي مساعدة المستخدمين من خلال الرد عليهم بأسلوب ودود ومساعد.
+        استخدم اللغة المصرية العامية فقط.
+        تأكد أن ردك يكون بناءً على شخصية المستخدم: {persona}
+        اجعل ردك طبيعياً ومختصراً قدر الإمكان.
+        {user_message}
+        """
 
 class ProfileViewSet(viewsets.ModelViewSet):
+    """
+    A viewset for managing user profiles.
+    """
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Restricts queryset to the current user's profile."""
+        return self.queryset.filter(user=self.request.user)
+    
     def perform_create(self, serializer):
-        user = self.request.user
-        profile, created = Profile.objects.get_or_create(user=user)
-        serializer.save(user=profile)
-        return Response(serializer.data, status=201)
+        """Ensures a user can only create their own profile."""
+        serializer.save(user=self.request.user)
+    
     def perform_update(self, serializer):
-        user = self.request.user
-        profile = Profile.objects.get(user=user)
-        serializer.save(user=profile)
-        return Response(serializer.data, status=200)
-    def retrieve(self, request, *args, **kwargs):
-        user = self.request.user
-        profile = Profile.objects.get(user=user)
-        serializer = self.get_serializer(profile)
-        return Response(serializer.data)
+        """Ensures a user can only update their own profile."""
+        serializer.save(user=self.request.user)
 
 class ChatViewSet(viewsets.ModelViewSet):
+    """
+    A viewset for managing chat sessions.
+    """
     queryset = Chat.objects.all()
     serializer_class = ChatSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Restricts queryset to chats belonging to the current user."""
+        return self.queryset.filter(user=self.request.user)
+
     def perform_create(self, serializer):
-        user = self.request.user
-        chat = serializer.save(user=user)
-        return Response(ChatSerializer(chat).data, status=201)
-    def retrieve(self, request, *args, **kwargs):
-        user = self.request.user
-        chat = self.get_object()
-        if chat.user != user:
-            return Response({"detail": "You do not have permission to view this chat."}, status=403)
-        
-        serializer = self.get_serializer(chat)
-        return Response(serializer.data)
+        """Ensures a user can only create a chat for themselves."""
+        serializer.save(user=self.request.user)
 
 class TeStatusViewSet(viewsets.ModelViewSet):
+    """
+    A viewset for managing the user's Te_status, which includes the AI persona.
+    """
     queryset = Te_status.objects.all()
     serializer_class = TeStatusSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """Restricts queryset to the current user's Te_status."""
+        return self.queryset.filter(user=self.request.user)
+
     def perform_create(self, serializer):
-        user = self.request.user
-        te_status, created = Te_status.objects.get_or_create(user=user)
-        serializer.save(user=te_status)
-        return Response(serializer.data, status=201)
+        """Ensures a user can only create their own Te_status."""
+        serializer.save(user=self.request.user)
+
     def perform_update(self, serializer):
-        user = self.request.user
-        te_status = Te_status.objects.get(user=user)
-        serializer.save(user=te_status)
-        return Response(serializer.data, status=200)
-    def retrieve(self, request, *args, **kwargs):
-        user = self.request.user
-        te_status = Te_status.objects.get(user=user)
-        serializer = self.get_serializer(te_status)
-        return Response(serializer.data)
+        """Ensures a user can only update their own Te_status."""
+        serializer.save(user=self.request.user)
