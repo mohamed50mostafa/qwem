@@ -39,13 +39,12 @@ class Message(models.Model):
     def __str__(self):
         if self.ai:
             return f'AI: {self.content[:30]}...'
-        elif self.user:
-            return f'{self.user.username}: {self.content[:30]}...'
-        return f'Unknown: {self.content[:30]}...'
+        return f'{self.user.username}: {self.content[:30]}...'
 
 
 class Te_status(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='statuses')
+    # تم تغيير العلاقة إلى OneToOneField لضمان حالة واحدة لكل مستخدم.
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='status')
     persona_prompt = models.TextField(max_length=500, null=True, blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
 

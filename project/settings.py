@@ -1,7 +1,3 @@
-"""
-Django settings for project.
-"""
-
 from pathlib import Path
 from django.core.management.utils import get_random_secret_key
 import os
@@ -48,8 +44,8 @@ INSTALLED_APPS = [
     'allauth',                   # Core allauth app
     'allauth.account',           # Handles user accounts (registration, login, logout, email verification)
     'allauth.socialaccount',     # For social logins (Google, Facebook, etc.)
-    'allauth.socialaccount.providers.google',  # Specific provider for Googlث
-    'whitenoise.runserver_nostatic',  # To serve static files in production
+    'allauth.socialaccount.providers.google', # Specific provider for Googl
+    'whitenoise.runserver_nostatic', # To serve static files in production
 ]
 
 # -------------------------------------------------------------
@@ -162,11 +158,10 @@ AUTHENTICATION_BACKENDS = (
 # Use email for authentication instead of username
 ACCOUNT_AUTHENTICATION_METHOD = 'email'
 ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_USERNAME_REQUIRED = False
-
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_SIGNUP_FIELDS = ['first_name', 'last_name']
 # Email verification can be 'mandatory', 'optional', or 'none'
 ACCOUNT_EMAIL_VERIFICATION = 'optional'
-ACCOUNT_UNIQUE_EMAIL = True
 
 # -------------------------------------------------------------
 # EMAIL CONFIGURATION

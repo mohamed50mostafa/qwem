@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.contrib.auth.models import User
@@ -101,21 +101,27 @@ class MessageViewSet(viewsets.ModelViewSet):
     """
     queryset = Message.objects.all().order_by("timestamp")
     serializer_class = MessageSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         """
         Filters messages to only show those for the current user's chats.
+        Handles unauthenticated users gracefully.
         """
-        user = self.request.user
-        return Message.objects.filter(
-            chat__user=user
-        ).order_by("timestamp")
+        if self.request.user.is_authenticated:
+            return self.queryset.filter(
+                chat__user=self.request.user
+            ).order_by("timestamp")
+        return Message.objects.none()
+
 
     def create(self, request, *args, **kwargs):
         """
         Handles creating a user's message and generating an AI reply.
+        Handles unauthenticated users gracefully.
         """
+        if not self.request.user.is_authenticated:
+            return Response({"error": "Authentication required to create a message."}, status=status.HTTP_401_UNAUTHORIZED)
+        
         # Create a mutable copy of the request data
         request_data = request.data.copy()
         request_data['user'] = request.user.id
@@ -185,19 +191,29 @@ class ProfileViewSet(viewsets.ModelViewSet):
     """
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """Restricts queryset to the current user's profile."""
-        return self.queryset.filter(user=self.request.user)
+        """
+        Restricts queryset to the current user's profile.
+        Handles unauthenticated users gracefully.
+        """
+        if self.request.user.is_authenticated:
+            return self.queryset.filter(user=self.request.user)
+        return Profile.objects.none()
     
     def perform_create(self, serializer):
         """Ensures a user can only create their own profile."""
-        serializer.save(user=self.request.user)
+        if self.request.user.is_authenticated:
+            serializer.save(user=self.request.user)
+        else:
+            return Response({"error": "Authentication required to create a profile."}, status=status.HTTP_401_UNAUTHORIZED)
     
     def perform_update(self, serializer):
         """Ensures a user can only update their own profile."""
-        serializer.save(user=self.request.user)
+        if self.request.user.is_authenticated:
+            serializer.save(user=self.request.user)
+        else:
+            return Response({"error": "Authentication required to update a profile."}, status=status.HTTP_401_UNAUTHORIZED)
 
 class ChatViewSet(viewsets.ModelViewSet):
     """
@@ -205,15 +221,22 @@ class ChatViewSet(viewsets.ModelViewSet):
     """
     queryset = Chat.objects.all()
     serializer_class = ChatSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """Restricts queryset to chats belonging to the current user."""
-        return self.queryset.filter(user=self.request.user)
+        """
+        Restricts queryset to chats belonging to the current user.
+        Handles unauthenticated users gracefully.
+        """
+        if self.request.user.is_authenticated:
+            return self.queryset.filter(user=self.request.user)
+        return Chat.objects.none()
 
     def perform_create(self, serializer):
         """Ensures a user can only create a chat for themselves."""
-        serializer.save(user=self.request.user)
+        if self.request.user.is_authenticated:
+            serializer.save(user=self.request.user)
+        else:
+            return Response({"error": "Authentication required to create a chat."}, status=status.HTTP_401_UNAUTHORIZED)
 
 class TeStatusViewSet(viewsets.ModelViewSet):
     """
@@ -221,16 +244,26 @@ class TeStatusViewSet(viewsets.ModelViewSet):
     """
     queryset = Te_status.objects.all()
     serializer_class = TeStatusSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """Restricts queryset to the current user's Te_status."""
-        return self.queryset.filter(user=self.request.user)
+        """
+        Restricts queryset to the current user's Te_status.
+        Handles unauthenticated users gracefully.
+        """
+        if self.request.user.is_authenticated:
+            return self.queryset.filter(user=self.request.user)
+        return Te_status.objects.none()
 
     def perform_create(self, serializer):
         """Ensures a user can only create their own Te_status."""
-        serializer.save(user=self.request.user)
+        if self.request.user.is_authenticated:
+            serializer.save(user=self.request.user)
+        else:
+            return Response({"error": "Authentication required to create a status."}, status=status.HTTP_401_UNAUTHORIZED)
 
     def perform_update(self, serializer):
         """Ensures a user can only update their own Te_status."""
-        serializer.save(user=self.request.user)
+        if self.request.user.is_authenticated:
+            serializer.save(user=self.request.user)
+        else:
+            return Response({"error": "Authentication required to update a status."}, status=status.HTTP_401_UNAUTHORIZED)
