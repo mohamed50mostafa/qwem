@@ -50,3 +50,24 @@ class Te_status(models.Model):
 
     def __str__(self):
         return f'{self.user.username} Status'
+    
+class Story(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='stories')
+    title = models.CharField(max_length=200)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return self.title
+
+class StoryMessage(models.Model):
+    story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="messages")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True) 
+    ai = models.BooleanField(default=False)
+    image = models.ImageField(upload_to='story_images', null=True, blank=True)
+    content = models.TextField(default="")
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        if self.ai:
+            return f'AI: {self.content[:30]}...'
+        return f'{self.user.username}: {self.content[:30]}...'

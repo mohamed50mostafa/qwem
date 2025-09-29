@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Profile, Chat, Message, Te_status
+from .models import Profile, Chat, Message, Te_status, Story, StoryMessage
 from django.contrib.auth.models import User
 
 class UserSerializer(serializers.ModelSerializer):
@@ -38,4 +38,22 @@ class TeStatusSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Te_status
+        fields = '__all__'
+
+class StorySerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    
+    class Meta:
+        model = Story
+        fields = '__all__'
+
+class StoryMessageSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    story_id = serializers.PrimaryKeyRelatedField(
+        queryset=Story.objects.all(),
+        source="story",
+    )
+    
+    class Meta:
+        model = StoryMessage
         fields = '__all__'
